@@ -29,6 +29,13 @@ ulid = { version = "1", features = ["serde"] }
 # HTTP client (for CLI)
 reqwest = { version = "0.12", features = ["json", "rustls-tls-native-roots"], default-features = false }
 
+# Firestore
+firestore = "0.48"
+futures = "0.3"
+rustls = "0.23"
+# jsonwebtoken needs a crypto provider (transitive dep via gcloud-sdk)
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
+
 # Error handling
 anyhow = "1"
 thiserror = "2"

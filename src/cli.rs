@@ -34,6 +34,12 @@ pub enum Command {
         /// Bind address (use 0.0.0.0 for network access)
         #[arg(short, long, default_value = "127.0.0.1")]
         bind: String,
+        /// Store backend: memory or firestore
+        #[arg(long, default_value = "memory", env = "KASE_STORE")]
+        store: String,
+        /// GCP project ID (required for firestore)
+        #[arg(long, env = "GOOGLE_CLOUD_PROJECT")]
+        project: Option<String>,
     },
     /// Ingest a scan result file
     Ingest {

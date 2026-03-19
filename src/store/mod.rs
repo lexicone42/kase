@@ -1,3 +1,5 @@
+pub mod firestore_store;
+
 use crate::model::*;
 use async_trait::async_trait;
 use chrono::Utc;
@@ -25,11 +27,7 @@ pub trait CaseStore: Send + Sync {
     async fn delete(&self, id: Ulid) -> StoreResult<()>;
     async fn find_by_resource(&self, resource_id: &str) -> StoreResult<Option<Case>>;
     async fn find_by_finding(&self, finding_id: &str) -> StoreResult<Option<Case>>;
-
-    /// Atomically add a note to a case (avoids TOCTOU with get+save).
     async fn add_note(&self, id: Ulid, note: Note) -> StoreResult<Case>;
-
-    /// Atomically resolve a case (avoids TOCTOU with get+save).
     async fn resolve(
         &self,
         id: Ulid,
@@ -37,6 +35,60 @@ pub trait CaseStore: Send + Sync {
         status: Status,
     ) -> StoreResult<Case>;
 }
+
+/// Apply ListParams filters and sort to a vec of cases.
+/// Shared by InMemoryStore and FirestoreStore.
+pub fn apply_filters_and_sort(cases: &mut Vec<Case>, params: &ListParams) {
+    if let Some(ref status_str) = params.status {
+        let statuses: Vec<Status> = status_str
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+        if !statuses.is_empty() {
+            cases.retain(|c| statuses.contains(&c.status));
+        }
+    }
+
+    if let Some(ref sev_str) = params.severity {
+        let severities: Vec<Severity> = sev_str
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+        if !severities.is_empty() {
+            cases.retain(|c| severities.contains(&c.severity));
+        }
+    }
+
+    if let Some(ref assignee) = params.assignee {
+        cases.retain(|c| c.assignee.as_deref() == Some(assignee.as_str()));
+    }
+
+    if let Some(ref prov_str) = params.provider {
+        let providers: Vec<Provider> = prov_str
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+        if !providers.is_empty() {
+            cases.retain(|c| providers.contains(&c.provider));
+        }
+    }
+
+    if params.overdue == Some(true) {
+        let now = Utc::now();
+        cases.retain(|c| {
+            c.due_at.is_some_and(|d| d < now)
+                && !matches!(c.status, Status::Closed | Status::Accepted)
+        });
+    }
+
+    cases.sort_by(|a, b| {
+        b.severity
+            .cmp(&a.severity)
+            .then_with(|| b.created_at.cmp(&a.created_at))
+    });
+}
+
+// === InMemoryStore ===
 
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryStore {
@@ -65,56 +117,7 @@ impl CaseStore for InMemoryStore {
     async fn list(&self, params: &ListParams) -> StoreResult<Vec<Case>> {
         let cases = self.cases.read().await;
         let mut result: Vec<Case> = cases.values().cloned().collect();
-
-        if let Some(ref status_str) = params.status {
-            let statuses: Vec<Status> = status_str
-                .split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect();
-            if !statuses.is_empty() {
-                result.retain(|c| statuses.contains(&c.status));
-            }
-        }
-
-        if let Some(ref sev_str) = params.severity {
-            let severities: Vec<Severity> = sev_str
-                .split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect();
-            if !severities.is_empty() {
-                result.retain(|c| severities.contains(&c.severity));
-            }
-        }
-
-        if let Some(ref assignee) = params.assignee {
-            result.retain(|c| c.assignee.as_deref() == Some(assignee.as_str()));
-        }
-
-        if let Some(ref prov_str) = params.provider {
-            let providers: Vec<Provider> = prov_str
-                .split(',')
-                .filter_map(|s| s.trim().parse().ok())
-                .collect();
-            if !providers.is_empty() {
-                result.retain(|c| providers.contains(&c.provider));
-            }
-        }
-
-        if params.overdue == Some(true) {
-            let now = Utc::now();
-            result.retain(|c| {
-                c.due_at.is_some_and(|d| d < now)
-                    && !matches!(c.status, Status::Closed | Status::Accepted)
-            });
-        }
-
-        // Sort by severity (desc) then created_at (desc)
-        result.sort_by(|a, b| {
-            b.severity
-                .cmp(&a.severity)
-                .then_with(|| b.created_at.cmp(&a.created_at))
-        });
-
+        apply_filters_and_sort(&mut result, params);
         Ok(result)
     }
 
@@ -127,7 +130,6 @@ impl CaseStore for InMemoryStore {
             if matches!(status, Status::Closed | Status::Accepted) {
                 case.closed_at = Some(Utc::now());
             } else {
-                // Clear terminal-state fields when moving to non-terminal status
                 case.closed_at = None;
                 case.resolution = None;
             }
