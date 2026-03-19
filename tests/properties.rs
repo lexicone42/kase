@@ -245,6 +245,7 @@ proptest! {
             let scan = ScanResult {
                 scan_id: "prop-test".into(),
                 timestamp: Utc::now(),
+                source: "prop-test".into(),
                 findings: findings.clone(),
                 attack_paths: vec![],
                 chokepoints: vec![],
@@ -275,6 +276,7 @@ proptest! {
             let scan = ScanResult {
                 scan_id: "prop-test".into(),
                 timestamp: Utc::now(),
+                source: "prop-test".into(),
                 findings: findings.clone(),
                 attack_paths: vec![],
                 chokepoints: vec![],
@@ -299,6 +301,7 @@ proptest! {
             let scan = ScanResult {
                 scan_id: "prop-test".into(),
                 timestamp: Utc::now(),
+                source: "prop-test".into(),
                 findings: findings.clone(),
                 attack_paths: vec![],
                 chokepoints: vec![],

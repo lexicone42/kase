@@ -54,6 +54,7 @@ fn test_scan(findings: Vec<Finding>) -> ScanResult {
     ScanResult {
         scan_id: "test-scan".into(),
         timestamp: chrono::Utc::now(),
+        source: "test".into(),
         findings,
         attack_paths: vec![],
         chokepoints: vec![],
@@ -238,6 +239,7 @@ async fn ingest_empty_scan_does_not_mitigate_anything() {
     let empty_scan = ScanResult {
         scan_id: "empty".into(),
         timestamp: chrono::Utc::now(),
+        source: "test".into(),
         findings: vec![],
         attack_paths: vec![],
         chokepoints: vec![],
@@ -666,6 +668,75 @@ async fn metrics_with_cases() {
     assert_eq!(m.total_closed, 1);
     assert!(m.mttr_hours.is_some());
     assert!(m.sla_compliance_pct.is_some());
+}
+
+// === Triage ===
+
+#[tokio::test]
+async fn triage_returns_priority_sorted_cases() {
+    let (app, store) = test_app();
+    let scan = test_scan(vec![
+        gcp_finding("f1", "gs://a", Severity::Low),
+        gcp_finding("f2", "gs://b", Severity::Critical),
+        gcp_finding("f3", "gs://c", Severity::High),
+    ]);
+    kase::ingest::ingest_scan(store.as_ref(), scan).await.unwrap();
+
+    let resp = app.oneshot(get("/api/v1/triage")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let items: Vec<TriageItem> = body_json(resp).await;
+    assert_eq!(items.len(), 3);
+    // Should be sorted: Critical, High, Low
+    assert_eq!(items[0].case.severity, Severity::Critical);
+    assert_eq!(items[1].case.severity, Severity::High);
+    assert_eq!(items[2].case.severity, Severity::Low);
+    assert_eq!(items[0].rank, 1);
+}
+
+#[tokio::test]
+async fn triage_respects_limit() {
+    let (app, store) = test_app();
+    let scan = test_scan(vec![
+        gcp_finding("f1", "gs://a", Severity::Low),
+        gcp_finding("f2", "gs://b", Severity::High),
+        gcp_finding("f3", "gs://c", Severity::Critical),
+    ]);
+    kase::ingest::ingest_scan(store.as_ref(), scan).await.unwrap();
+
+    let resp = app
+        .oneshot(get("/api/v1/triage?limit=1"))
+        .await
+        .unwrap();
+    let items: Vec<TriageItem> = body_json(resp).await;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].case.severity, Severity::Critical);
+}
+
+#[tokio::test]
+async fn triage_excludes_closed_cases() {
+    let (app, store) = test_app();
+    let scan = test_scan(vec![
+        gcp_finding("f1", "gs://a", Severity::Critical),
+        gcp_finding("f2", "gs://b", Severity::High),
+    ]);
+    kase::ingest::ingest_scan(store.as_ref(), scan).await.unwrap();
+
+    // Close the critical case
+    let cases = store.list(&ListParams::default()).await.unwrap();
+    let critical_id = cases.iter().find(|c| c.severity == Severity::Critical).unwrap().id;
+    let resolution = Resolution {
+        kind: ResolutionKind::Remediated,
+        description: "Fixed".into(),
+        evidence: None,
+        verified_by_scan: None,
+    };
+    store.resolve(critical_id, resolution, Status::Closed).await.unwrap();
+
+    let resp = app.oneshot(get("/api/v1/triage")).await.unwrap();
+    let items: Vec<TriageItem> = body_json(resp).await;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].case.severity, Severity::High);
 }
 
 // === Full lifecycle ===

@@ -44,6 +44,14 @@ echo "=== Show case ==="
 $KASE show "$CASE_ID"
 
 echo ""
+echo "=== Triage (what should I work on?) ==="
+$KASE triage
+
+echo ""
+echo "=== Triage (JSON — for agent use) ==="
+$KASE triage --limit 2 --json | jq '.[0] | {rank, severity: .case.severity, title: .case.title, overdue, sla_hours_remaining}'
+
+echo ""
 echo "=== Assign case ==="
 $KASE assign "$CASE_ID" --to bryan
 

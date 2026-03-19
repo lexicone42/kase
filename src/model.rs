@@ -175,11 +175,18 @@ pub struct Note {
 pub struct ScanResult {
     pub scan_id: String,
     pub timestamp: DateTime<Utc>,
+    /// Source of this scan (karkinos, scc, security-hub, etc.)
+    #[serde(default = "default_source")]
+    pub source: String,
     pub findings: Vec<Finding>,
     #[serde(default)]
     pub attack_paths: Vec<AttackPath>,
     #[serde(default)]
     pub chokepoints: Vec<Chokepoint>,
+}
+
+fn default_source() -> String {
+    "karkinos".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,6 +264,23 @@ pub struct IngestResponse {
     pub updated: Vec<Ulid>,
     pub mitigated: Vec<Ulid>,
     pub reopened: Vec<Ulid>,
+}
+
+// === Triage ===
+
+#[derive(Debug, Default, Deserialize)]
+pub struct TriageParams {
+    /// Max cases to return (default 5)
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TriageItem {
+    pub case: Case,
+    pub rank: usize,
+    pub overdue: bool,
+    /// Hours until SLA deadline (negative = past due)
+    pub sla_hours_remaining: Option<f64>,
 }
 
 // === Metrics ===

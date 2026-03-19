@@ -6,7 +6,7 @@ Security case management system. Companion to [karkinos](https://github.com/lexi
 
 ```sh
 cargo build              # build
-cargo test               # 45 tests (28 integration + 17 property)
+cargo test               # 48 tests (31 integration + 17 property)
 cargo run -- serve       # start API server on 127.0.0.1:3000
 cargo run -- --help      # CLI usage
 ```
@@ -18,6 +18,7 @@ kase binary (single binary, two modes)
 ├── serve mode:  axum API server (port 3000)
 │   ├── POST /api/v1/ingest       ← karkinos pushes ScanResult here
 │   ├── GET/PATCH /api/v1/cases/* ← CRUD + notes + resolve + merge
+│   ├── GET /api/v1/triage        ← priority-sorted for agent triage
 │   └── GET /api/v1/metrics       ← MTTR, SLA compliance
 └── CLI mode:    thin reqwest client pointing at KASE_URL
     └── kase list, show, assign, status, note, accept, close, metrics
@@ -50,14 +51,35 @@ kase binary (single binary, two modes)
 - **Property tests** (`tests/properties.rs`): proptest-based. Truncate safety, SLA monotonicity, enum roundtrips, metrics invariants, ingest correctness.
 - **Integration tests** (`tests/integration.rs`): Full API through axum router using tower::oneshot. Covers all endpoints, ingest lifecycle, filters, merge, full end-to-end.
 
-## CLI JSON Mode
+## Agent Workflow
 
-All CLI commands support `--json` for machine-readable output (useful for Claude agents):
+The intended loop for a Claude agent:
+```sh
+kase triage --json              # 1. What's highest priority?
+kase show CASE_ID --json        # 2. Full context on that case
+# ... investigate and fix (e.g., write smelt IaC) ...
+kase note CASE_ID "Applied fix" # 3. Document action
+kase close CASE_ID --evidence X # 4. Resolve with evidence
+# Next karkinos scan auto-verifies
+```
+
+All CLI commands support `--json` for machine-readable output:
 ```sh
 kase list --json
+kase triage --json --limit 1
 kase show CASE_ID --json
 kase metrics --json
 ```
+
+## Multi-Source Ingestion
+
+`ScanResult.source` identifies where findings came from (default: "karkinos").
+kase is source-agnostic — it can ingest from karkinos, SCC, Security Hub, or any tool that produces compatible JSON.
+
+## Sibling Projects
+
+- **karkinos** (`../karkinos/`) — CSPM scanner, produces `ScanResult` JSON
+- **smelt** (`../smelt/`) — IaC tool for remediation (GCP + AWS providers)
 
 ## Quick Smoke Test
 

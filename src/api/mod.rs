@@ -25,6 +25,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/cases/{id}/notes", post(cases::add_note))
         .route("/api/v1/cases/{id}/resolve", post(cases::resolve_case))
         .route("/api/v1/cases/{id}/merge", post(cases::merge_case))
+        .route("/api/v1/triage", get(cases::triage))
         .route("/api/v1/metrics", get(metrics::get_metrics))
         .layer(TraceLayer::new_for_http())
         .with_state(state)

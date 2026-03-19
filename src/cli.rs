@@ -104,6 +104,12 @@ pub enum Command {
         #[arg(long)]
         evidence: Option<String>,
     },
+    /// Show highest-priority cases for triage (agent-friendly)
+    Triage {
+        /// Max cases to show
+        #[arg(short, long, default_value = "5")]
+        limit: usize,
+    },
     /// Show metrics
     Metrics,
 }
@@ -328,6 +334,48 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&case)?);
             } else {
                 println!("Closed {} -> {}", case.id, case.status);
+            }
+        }
+
+        Command::Triage { limit } => {
+            let items: Vec<TriageItem> = client
+                .get(format!("{base}/api/v1/triage"))
+                .query(&[("limit", limit.to_string())])
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&items)?);
+                return Ok(());
+            }
+
+            if items.is_empty() {
+                println!("No cases need triage.");
+                return Ok(());
+            }
+
+            for item in &items {
+                let sla = match item.sla_hours_remaining {
+                    Some(h) if h < 0.0 => format!("OVERDUE by {:.0}h", -h),
+                    Some(h) => format!("{:.0}h remaining", h),
+                    None => "no SLA".into(),
+                };
+                println!(
+                    "#{} [{}] {} — {} ({}, {})",
+                    item.rank,
+                    item.case.severity,
+                    item.case.id,
+                    item.case.title,
+                    item.case.assignee.as_deref().unwrap_or("unassigned"),
+                    sla,
+                );
+                for f in &item.case.findings {
+                    println!("   {} on {}", f.finding_id, f.resource_id);
+                }
+                println!();
             }
         }
 
