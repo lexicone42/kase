@@ -1,0 +1,58 @@
+{
+  "scan_id": "scan-2026-03-19-001",
+  "timestamp": "2026-03-19T18:00:00Z",
+  "findings": [
+    {
+      "id": "gcp-storage-versioning-001",
+      "resource_id": "gs://data-lake-prod",
+      "resource_type": "storage.googleapis.com/Bucket",
+      "policy_id": "gcp/storage/versioning-enabled",
+      "severity": "high",
+      "title": "Bucket versioning disabled",
+      "description": "Storage bucket gs://data-lake-prod does not have object versioning enabled, risking data loss from accidental deletion or overwrite.",
+      "provider": "gcp"
+    },
+    {
+      "id": "gcp-storage-versioning-002",
+      "resource_id": "gs://data-lake-staging",
+      "resource_type": "storage.googleapis.com/Bucket",
+      "policy_id": "gcp/storage/versioning-enabled",
+      "severity": "medium",
+      "title": "Bucket versioning disabled",
+      "description": "Storage bucket gs://data-lake-staging does not have object versioning enabled.",
+      "provider": "gcp"
+    },
+    {
+      "id": "gcp-storage-public-001",
+      "resource_id": "gs://data-lake-prod",
+      "resource_type": "storage.googleapis.com/Bucket",
+      "policy_id": "gcp/storage/no-public-access",
+      "severity": "critical",
+      "title": "Bucket allows public access",
+      "description": "Storage bucket gs://data-lake-prod has allUsers or allAuthenticatedUsers in its IAM policy, making data publicly accessible.",
+      "provider": "gcp"
+    },
+    {
+      "id": "gcp-iam-sa-key-001",
+      "resource_id": "projects/prod/serviceAccounts/deploy@prod.iam.gserviceaccount.com",
+      "resource_type": "iam.googleapis.com/ServiceAccountKey",
+      "policy_id": "gcp/iam/no-user-managed-keys",
+      "severity": "high",
+      "title": "User-managed service account key",
+      "description": "Service account deploy@prod.iam has a user-managed key older than 90 days. Use Workload Identity Federation instead.",
+      "provider": "gcp"
+    },
+    {
+      "id": "github-branch-protection-001",
+      "resource_id": "github.com/lexicone42/kase",
+      "resource_type": "github.com/Repository",
+      "policy_id": "github/branch-protection/require-review",
+      "severity": "low",
+      "title": "Branch protection does not require review",
+      "description": "Repository lexicone42/kase main branch allows direct pushes without pull request review.",
+      "provider": "github"
+    }
+  ],
+  "attack_paths": [],
+  "chokepoints": []
+}

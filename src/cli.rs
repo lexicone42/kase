@@ -18,6 +18,10 @@ pub struct Cli {
         global = true
     )]
     pub url: String,
+
+    /// Output as JSON (for programmatic/agent use)
+    #[arg(long, global = true)]
+    pub json: bool,
 }
 
 #[derive(Subcommand)]
@@ -106,7 +110,8 @@ pub enum Command {
 
 pub async fn execute(cli: Cli) -> Result<()> {
     let client = Client::new();
-    let base = cli.url.trim_end_matches('/');
+    let json_mode = cli.json;
+    let base = cli.url.trim_end_matches('/').to_owned();
 
     match cli.command {
         Command::Serve { .. } => unreachable!("handled in main"),
@@ -124,13 +129,17 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
-            println!(
-                "Created: {} | Updated: {} | Mitigated: {} | Reopened: {}",
-                resp.created.len(),
-                resp.updated.len(),
-                resp.mitigated.len(),
-                resp.reopened.len()
-            );
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&resp)?);
+            } else {
+                println!(
+                    "Created: {} | Updated: {} | Mitigated: {} | Reopened: {}",
+                    resp.created.len(),
+                    resp.updated.len(),
+                    resp.mitigated.len(),
+                    resp.reopened.len()
+                );
+            }
         }
 
         Command::List {
@@ -159,6 +168,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
+
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&cases)?);
+                return Ok(());
+            }
 
             if cases.is_empty() {
                 println!("No cases found.");
@@ -191,7 +205,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
-            print_case(&case);
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&case)?);
+            } else {
+                print_case(&case);
+            }
         }
 
         Command::Assign { id, to } => {
@@ -207,7 +225,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
-            println!("Assigned {} to {}", case.id, to);
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&case)?);
+            } else {
+                println!("Assigned {} to {}", case.id, to);
+            }
         }
 
         Command::Status { id, status } => {
@@ -225,7 +247,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
-            println!("Updated {} -> {}", case.id, case.status);
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&case)?);
+            } else {
+                println!("Updated {} -> {}", case.id, case.status);
+            }
         }
 
         Command::Note {
@@ -237,7 +263,7 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 author: author.unwrap_or_else(|| "unknown".into()),
                 content: message,
             };
-            let _case: Case = client
+            let case: Case = client
                 .post(format!("{base}/api/v1/cases/{id}/notes"))
                 .json(&req)
                 .send()
@@ -245,7 +271,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
-            println!("Note added to {id}");
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&case)?);
+            } else {
+                println!("Note added to {id}");
+            }
         }
 
         Command::Accept { id, reason } => {
@@ -262,7 +292,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
-            println!("Accepted risk for {} -> {}", case.id, case.status);
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&case)?);
+            } else {
+                println!("Accepted risk for {} -> {}", case.id, case.status);
+            }
         }
 
         Command::Close {
@@ -290,7 +324,11 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
-            println!("Closed {} -> {}", case.id, case.status);
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&case)?);
+            } else {
+                println!("Closed {} -> {}", case.id, case.status);
+            }
         }
 
         Command::Metrics => {
@@ -301,22 +339,26 @@ pub async fn execute(cli: Cli) -> Result<()> {
                 .error_for_status()?
                 .json()
                 .await?;
-            println!(
-                "Cases: {} open, {} in-progress, {} mitigated, {} closed, {} accepted",
-                metrics.total_open,
-                metrics.total_in_progress,
-                metrics.total_mitigated,
-                metrics.total_closed,
-                metrics.total_accepted
-            );
-            if metrics.overdue > 0 {
-                println!("Overdue: {}", metrics.overdue);
-            }
-            if let Some(mttr) = metrics.mttr_hours {
-                println!("MTTR: {:.1}h", mttr);
-            }
-            if let Some(sla) = metrics.sla_compliance_pct {
-                println!("SLA compliance: {:.1}%", sla);
+            if json_mode {
+                println!("{}", serde_json::to_string_pretty(&metrics)?);
+            } else {
+                println!(
+                    "Cases: {} open, {} in-progress, {} mitigated, {} closed, {} accepted",
+                    metrics.total_open,
+                    metrics.total_in_progress,
+                    metrics.total_mitigated,
+                    metrics.total_closed,
+                    metrics.total_accepted
+                );
+                if metrics.overdue > 0 {
+                    println!("Overdue: {}", metrics.overdue);
+                }
+                if let Some(mttr) = metrics.mttr_hours {
+                    println!("MTTR: {:.1}h", mttr);
+                }
+                if let Some(sla) = metrics.sla_compliance_pct {
+                    println!("SLA compliance: {:.1}%", sla);
+                }
             }
         }
     }
