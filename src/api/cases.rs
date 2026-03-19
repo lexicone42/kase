@@ -41,14 +41,12 @@ pub async fn add_note(
     Json(req): Json<NoteRequest>,
 ) -> Result<Json<Case>, ApiError> {
     let id = parse_ulid(&id)?;
-    let mut case = state.store.get(id).await?;
-    case.notes.push(Note {
+    let note = Note {
         author: req.author,
         content: req.content,
         created_at: chrono::Utc::now(),
-    });
-    case.updated_at = chrono::Utc::now();
-    let case = state.store.save(case).await?;
+    };
+    let case = state.store.add_note(id, note).await?;
     Ok(Json(case))
 }
 
@@ -58,20 +56,17 @@ pub async fn resolve_case(
     Json(req): Json<ResolveRequest>,
 ) -> Result<Json<Case>, ApiError> {
     let id = parse_ulid(&id)?;
-    let mut case = state.store.get(id).await?;
-    case.resolution = Some(Resolution {
+    let resolution = Resolution {
         kind: req.kind,
         description: req.description,
         evidence: req.evidence,
         verified_by_scan: None,
-    });
-    case.status = match req.kind {
+    };
+    let status = match req.kind {
         ResolutionKind::Accepted => Status::Accepted,
         _ => Status::Closed,
     };
-    case.closed_at = Some(chrono::Utc::now());
-    case.updated_at = chrono::Utc::now();
-    let case = state.store.save(case).await?;
+    let case = state.store.resolve(id, resolution, status).await?;
     Ok(Json(case))
 }
 
@@ -81,10 +76,19 @@ pub async fn merge_case(
     Json(req): Json<MergeRequest>,
 ) -> Result<Json<Case>, ApiError> {
     let target_id = parse_ulid(&target_id)?;
+
+    // Prevent self-merge (would delete the case)
+    if target_id == req.source_case_id {
+        return Err(ApiError {
+            status: StatusCode::BAD_REQUEST,
+            message: "cannot merge a case into itself".into(),
+        });
+    }
+
     let source = state.store.get(req.source_case_id).await?;
     let mut target = state.store.get(target_id).await?;
 
-    // Merge findings
+    // Merge findings (deduplicate by finding_id)
     for finding in source.findings {
         if !target
             .findings
@@ -123,6 +127,6 @@ pub async fn merge_case(
 fn parse_ulid(s: &str) -> Result<Ulid, ApiError> {
     s.parse().map_err(|_| ApiError {
         status: StatusCode::BAD_REQUEST,
-        message: format!("invalid case ID: {s}"),
+        message: "invalid case ID format".into(),
     })
 }

@@ -2,6 +2,7 @@ use crate::model::*;
 use crate::sla;
 use crate::store::{CaseStore, StoreResult};
 use std::collections::{HashMap, HashSet};
+#[allow(unused_imports)]
 use ulid::Ulid;
 
 /// Ingest a scan result: group findings into cases, apply auto-transitions.
@@ -131,12 +132,21 @@ pub async fn ingest_scan(
         }
     }
 
+    // Collect providers covered by this scan for scoped auto-mitigation.
+    // Only mitigate cases from providers that were actually scanned —
+    // a GCP scan must not auto-mitigate AWS cases.
+    let scan_providers: HashSet<Provider> =
+        scan.findings.iter().map(|f| f.provider).collect();
+
     // Auto-mitigate: cases whose findings all disappeared from this scan
     for case in &all_cases {
         if seen_case_ids.contains(&case.id) {
             continue;
         }
         if !matches!(case.status, Status::Open | Status::InProgress) {
+            continue;
+        }
+        if !scan_providers.contains(&case.provider) {
             continue;
         }
 

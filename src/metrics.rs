@@ -39,7 +39,10 @@ pub fn compute(cases: &[Case]) -> CaseMetrics {
         // MTTR and SLA for resolved cases
         if let Some(closed_at) = case.closed_at {
             let hours = (closed_at - case.created_at).num_hours() as f64;
-            remediation_hours.push(hours);
+            // Guard against negative MTTR from clock skew or manual manipulation
+            if hours >= 0.0 {
+                remediation_hours.push(hours);
+            }
 
             sla_total += 1;
             if case.due_at.is_none_or(|d| closed_at <= d) {

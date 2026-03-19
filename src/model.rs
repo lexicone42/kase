@@ -4,7 +4,7 @@ use ulid::Ulid;
 
 // === Core domain types ===
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Case {
     pub id: Ulid,
     pub title: String,
@@ -59,7 +59,7 @@ impl std::str::FromStr for Status {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Info,
@@ -95,7 +95,7 @@ impl std::str::FromStr for Severity {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
     Gcp,
@@ -106,7 +106,35 @@ pub enum Provider {
     Other,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl std::fmt::Display for Provider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Gcp => write!(f, "gcp"),
+            Self::Aws => write!(f, "aws"),
+            Self::Azure => write!(f, "azure"),
+            Self::Github => write!(f, "github"),
+            Self::Workspace => write!(f, "workspace"),
+            Self::Other => write!(f, "other"),
+        }
+    }
+}
+
+impl std::str::FromStr for Provider {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "gcp" => Ok(Self::Gcp),
+            "aws" => Ok(Self::Aws),
+            "azure" => Ok(Self::Azure),
+            "github" => Ok(Self::Github),
+            "workspace" => Ok(Self::Workspace),
+            "other" => Ok(Self::Other),
+            _ => Err(format!("unknown provider: {s}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FindingRef {
     pub finding_id: String,
     pub resource_id: String,
@@ -116,7 +144,7 @@ pub struct FindingRef {
     pub resolved_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Resolution {
     pub kind: ResolutionKind,
     pub description: String,
@@ -134,7 +162,7 @@ pub enum ResolutionKind {
     WontFix,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Note {
     pub author: String,
     pub content: String,

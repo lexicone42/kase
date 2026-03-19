@@ -27,6 +27,9 @@ pub enum Command {
         /// Port to listen on
         #[arg(short, long, default_value = "3000")]
         port: u16,
+        /// Bind address (use 0.0.0.0 for network access)
+        #[arg(short, long, default_value = "127.0.0.1")]
+        bind: String,
     },
     /// Ingest a scan result file
     Ingest {
@@ -136,27 +139,21 @@ pub async fn execute(cli: Cli) -> Result<()> {
             assignee,
             overdue,
         } => {
-            let mut params = Vec::new();
-            if let Some(s) = status {
-                params.push(format!("status={s}"));
+            let mut request = client.get(format!("{base}/api/v1/cases"));
+            if let Some(ref s) = status {
+                request = request.query(&[("status", s)]);
             }
-            if let Some(s) = severity {
-                params.push(format!("severity={s}"));
+            if let Some(ref s) = severity {
+                request = request.query(&[("severity", s)]);
             }
-            if let Some(a) = assignee {
-                params.push(format!("assignee={a}"));
+            if let Some(ref a) = assignee {
+                request = request.query(&[("assignee", a)]);
             }
             if overdue {
-                params.push("overdue=true".into());
+                request = request.query(&[("overdue", "true")]);
             }
-            let query = if params.is_empty() {
-                String::new()
-            } else {
-                format!("?{}", params.join("&"))
-            };
 
-            let cases: Vec<Case> = client
-                .get(format!("{base}/api/v1/cases{query}"))
+            let cases: Vec<Case> = request
                 .send()
                 .await?
                 .error_for_status()?
@@ -327,11 +324,18 @@ pub async fn execute(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
+/// Truncate a string to `max` characters, appending "..." if truncated.
+/// Safe for all UTF-8 strings and all max values.
+pub fn truncate(s: &str, max: usize) -> String {
+    if max < 4 {
+        return s.chars().take(max).collect();
+    }
+    let char_count = s.chars().count();
+    if char_count <= max {
         s.to_string()
     } else {
-        format!("{}...", &s[..max - 3])
+        let truncated: String = s.chars().take(max - 3).collect();
+        format!("{truncated}...")
     }
 }
 

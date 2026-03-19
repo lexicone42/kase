@@ -25,6 +25,17 @@ pub trait CaseStore: Send + Sync {
     async fn delete(&self, id: Ulid) -> StoreResult<()>;
     async fn find_by_resource(&self, resource_id: &str) -> StoreResult<Option<Case>>;
     async fn find_by_finding(&self, finding_id: &str) -> StoreResult<Option<Case>>;
+
+    /// Atomically add a note to a case (avoids TOCTOU with get+save).
+    async fn add_note(&self, id: Ulid, note: Note) -> StoreResult<Case>;
+
+    /// Atomically resolve a case (avoids TOCTOU with get+save).
+    async fn resolve(
+        &self,
+        id: Ulid,
+        resolution: Resolution,
+        status: Status,
+    ) -> StoreResult<Case>;
 }
 
 #[derive(Debug, Default, Clone)]
@@ -79,6 +90,16 @@ impl CaseStore for InMemoryStore {
             result.retain(|c| c.assignee.as_deref() == Some(assignee.as_str()));
         }
 
+        if let Some(ref prov_str) = params.provider {
+            let providers: Vec<Provider> = prov_str
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            if !providers.is_empty() {
+                result.retain(|c| providers.contains(&c.provider));
+            }
+        }
+
         if params.overdue == Some(true) {
             let now = Utc::now();
             result.retain(|c| {
@@ -105,6 +126,10 @@ impl CaseStore for InMemoryStore {
             case.status = status;
             if matches!(status, Status::Closed | Status::Accepted) {
                 case.closed_at = Some(Utc::now());
+            } else {
+                // Clear terminal-state fields when moving to non-terminal status
+                case.closed_at = None;
+                case.resolution = None;
             }
         }
         if let Some(assignee) = update.assignee {
@@ -144,5 +169,28 @@ impl CaseStore for InMemoryStore {
             .values()
             .find(|c| c.findings.iter().any(|f| f.finding_id == finding_id))
             .cloned())
+    }
+
+    async fn add_note(&self, id: Ulid, note: Note) -> StoreResult<Case> {
+        let mut cases = self.cases.write().await;
+        let case = cases.get_mut(&id).ok_or(StoreError::NotFound(id))?;
+        case.notes.push(note);
+        case.updated_at = Utc::now();
+        Ok(case.clone())
+    }
+
+    async fn resolve(
+        &self,
+        id: Ulid,
+        resolution: Resolution,
+        status: Status,
+    ) -> StoreResult<Case> {
+        let mut cases = self.cases.write().await;
+        let case = cases.get_mut(&id).ok_or(StoreError::NotFound(id))?;
+        case.resolution = Some(resolution);
+        case.status = status;
+        case.closed_at = Some(Utc::now());
+        case.updated_at = Utc::now();
+        Ok(case.clone())
     }
 }
