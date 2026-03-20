@@ -21,6 +21,11 @@ clap = { version = "4", features = ["derive", "env"] }
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+opentelemetry = "0.31"
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+tracing-opentelemetry = "0.32"
+# Direct Cloud Trace export (no OTLP collector needed)
+opentelemetry-stackdriver = { version = "0.28", default-features = false, features = ["gcp-authorizer"] }
 
 # Time / IDs
 chrono = { version = "0.4", features = ["serde"] }

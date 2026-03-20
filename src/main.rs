@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     {
         let port = *port;
         let bind = bind.as_str();
-        kase::otel::init()?;
+        let _otel_guard = kase::otel::init().await?;
 
         let store: Arc<dyn CaseStore> = match store.as_str() {
             "memory" => {
