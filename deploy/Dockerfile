@@ -8,7 +8,10 @@ RUN cargo build --release
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/target/release/kase /usr/local/bin/kase
-ENV KASE_URL=http://localhost:3000
-EXPOSE 3000
+
+# Cloud Run sets PORT=8080; kase reads it via env
+ENV KASE_STORE=firestore
+EXPOSE 8080
+
 ENTRYPOINT ["kase"]
-CMD ["serve"]
+CMD ["serve", "--bind", "0.0.0.0"]

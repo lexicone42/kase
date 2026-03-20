@@ -3,7 +3,9 @@ steps:
     args:
       - build
       - -t
-      - gcr.io/$PROJECT_ID/kase:$COMMIT_SHA
+      - us-central1-docker.pkg.dev/$PROJECT_ID/kase/kase:$COMMIT_SHA
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/kase/kase:latest
       - -f
       - deploy/Dockerfile
       - .
@@ -11,7 +13,12 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - push
-      - gcr.io/$PROJECT_ID/kase:$COMMIT_SHA
+      - us-central1-docker.pkg.dev/$PROJECT_ID/kase/kase:$COMMIT_SHA
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - push
+      - us-central1-docker.pkg.dev/$PROJECT_ID/kase/kase:latest
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     args:
@@ -19,10 +26,17 @@ steps:
       - run
       - deploy
       - kase
-      - --image=gcr.io/$PROJECT_ID/kase:$COMMIT_SHA
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/kase/kase:$COMMIT_SHA
       - --region=us-central1
       - --platform=managed
       - --no-allow-unauthenticated
+      - --service-account=kase-api@$PROJECT_ID.iam.gserviceaccount.com
+      - --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,KASE_STORE=firestore
+      - --memory=256Mi
+      - --cpu=1
+      - --min-instances=0
+      - --max-instances=2
 
 images:
-  - gcr.io/$PROJECT_ID/kase:$COMMIT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/kase/kase:$COMMIT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/kase/kase:latest

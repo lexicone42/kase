@@ -28,8 +28,8 @@ pub struct Cli {
 pub enum Command {
     /// Start the API server
     Serve {
-        /// Port to listen on
-        #[arg(short, long, default_value = "3000")]
+        /// Port to listen on (Cloud Run sets PORT env var)
+        #[arg(short, long, default_value = "3000", env = "PORT")]
         port: u16,
         /// Bind address (use 0.0.0.0 for network access)
         #[arg(short, long, default_value = "127.0.0.1")]

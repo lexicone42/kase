@@ -92,10 +92,40 @@ cargo run -- metrics
 kill %1
 ```
 
-## Deployment Target
+## Deployment
 
-- GCP project in a "Security Tooling" resource folder
-- Cloud Run for the API service
-- Firestore for persistence
-- Cloud Trace + Cloud Monitoring for OTel data
-- See `deploy/` for Dockerfile and Cloud Build config
+**GCP infrastructure:**
+- Org: `lexicone.com` → Folder: `Security Tooling` → Project: `kase-prod`
+- Firestore: native mode, `us-central1`
+- Cloud Run: `kase` service, `us-central1`
+- Service account: `kase-api@kase-prod.iam.gserviceaccount.com` (Firestore only)
+
+**Local dev with Firestore:**
+```sh
+# IMPORTANT: unset GOOGLE_APPLICATION_CREDENTIALS if set (e.g., smelt-dev key)
+unset GOOGLE_APPLICATION_CREDENTIALS
+cargo run -- serve --store firestore --project kase-prod
+```
+
+**Deploy via Cloud Build:**
+```sh
+gcloud builds submit --config=deploy/cloudbuild.yaml --project=kase-prod \
+  --substitutions=COMMIT_SHA=$(git rev-parse --short HEAD) .
+```
+
+**Access the Cloud Run service (IAM-authenticated, no public access):**
+```sh
+# Proxy through gcloud (tunnels auth automatically)
+gcloud run services proxy kase --project=kase-prod --region=us-central1
+# Then: export KASE_URL=http://127.0.0.1:8080
+
+# Or invoke directly with auth header
+URL=$(gcloud run services describe kase --project=kase-prod --region=us-central1 --format='value(status.url)')
+TOKEN=$(gcloud auth print-identity-token)
+curl -H "Authorization: Bearer $TOKEN" "$URL/api/v1/health"
+```
+
+**Gotcha:** `GOOGLE_APPLICATION_CREDENTIALS` env var overrides all ADC resolution.
+If set to a service account key from another project (e.g., smelt-dev), Firestore
+calls will silently use the wrong identity. Always `unset GOOGLE_APPLICATION_CREDENTIALS`
+when developing locally with user credentials.
