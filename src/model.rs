@@ -102,7 +102,9 @@ pub enum Provider {
     Aws,
     Azure,
     Github,
+    #[serde(alias = "google_workspace")]
     Workspace,
+    Cloudflare,
     Other,
 }
 
@@ -114,6 +116,7 @@ impl std::fmt::Display for Provider {
             Self::Azure => write!(f, "azure"),
             Self::Github => write!(f, "github"),
             Self::Workspace => write!(f, "workspace"),
+            Self::Cloudflare => write!(f, "cloudflare"),
             Self::Other => write!(f, "other"),
         }
     }
@@ -127,7 +130,8 @@ impl std::str::FromStr for Provider {
             "aws" => Ok(Self::Aws),
             "azure" => Ok(Self::Azure),
             "github" => Ok(Self::Github),
-            "workspace" => Ok(Self::Workspace),
+            "workspace" | "google_workspace" => Ok(Self::Workspace),
+            "cloudflare" => Ok(Self::Cloudflare),
             "other" => Ok(Self::Other),
             _ => Err(format!("unknown provider: {s}")),
         }
@@ -171,11 +175,12 @@ pub struct Note {
 
 // === Scan ingest types (karkinos-compatible) ===
 
+/// Accepts both kase's minimal format and karkinos's richer output.
+/// Extra karkinos fields (duration_secs, providers_scanned, summary, etc.) are ignored.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     pub scan_id: String,
     pub timestamp: DateTime<Utc>,
-    /// Source of this scan (karkinos, scc, security-hub, etc.)
     #[serde(default = "default_source")]
     pub source: String,
     pub findings: Vec<Finding>,
@@ -189,7 +194,9 @@ fn default_source() -> String {
     "karkinos".into()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A finding from a scan. Accepts both kase's flat format and karkinos's
+/// nested `resource: ResourceRef` format via custom deserialization.
+#[derive(Debug, Clone, Serialize)]
 pub struct Finding {
     pub id: String,
     pub resource_id: String,
@@ -199,6 +206,63 @@ pub struct Finding {
     pub title: String,
     pub description: String,
     pub provider: Provider,
+}
+
+// Custom deserializer that handles both flat (kase) and nested (karkinos) formats.
+impl<'de> serde::Deserialize<'de> for Finding {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct ResourceRef {
+            id: String,
+            #[serde(default)]
+            resource_type: String,
+            provider: Provider,
+        }
+
+        #[derive(Deserialize)]
+        struct RawFinding {
+            id: String,
+            policy_id: String,
+            severity: Severity,
+            title: String,
+            description: String,
+            // Flat format (kase native)
+            resource_id: Option<String>,
+            resource_type: Option<String>,
+            provider: Option<Provider>,
+            // Nested format (karkinos native)
+            resource: Option<ResourceRef>,
+        }
+
+        let raw = RawFinding::deserialize(deserializer)?;
+
+        // Prefer nested resource if present (karkinos format), fall back to flat fields
+        let (resource_id, resource_type, provider) = if let Some(r) = raw.resource {
+            (r.id, r.resource_type, r.provider)
+        } else {
+            (
+                raw.resource_id
+                    .ok_or_else(|| serde::de::Error::missing_field("resource_id or resource"))?,
+                raw.resource_type.unwrap_or_default(),
+                raw.provider
+                    .ok_or_else(|| serde::de::Error::missing_field("provider or resource"))?,
+            )
+        };
+
+        Ok(Finding {
+            id: raw.id,
+            resource_id,
+            resource_type,
+            policy_id: raw.policy_id,
+            severity: raw.severity,
+            title: raw.title,
+            description: raw.description,
+            provider,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

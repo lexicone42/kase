@@ -1,0 +1,134 @@
+{
+  "scan_id": "karkinos-2026-03-20-001",
+  "timestamp": "2026-03-20T00:00:00Z",
+  "duration_secs": 28.1,
+  "total_resources": 208,
+  "providers_scanned": [
+    {"provider": "gcp", "resources": 150, "findings": 3},
+    {"provider": "github", "resources": 58, "findings": 2}
+  ],
+  "findings": [
+    {
+      "id": "a1b2c3d4e5f6",
+      "policy_id": "gcp/storage/versioning-enabled",
+      "title": "Bucket versioning disabled",
+      "severity": "high",
+      "resource": {
+        "id": "gs://prod-data-lake",
+        "name": "prod-data-lake",
+        "resource_type": "storage.googleapis.com/Bucket",
+        "provider": "gcp"
+      },
+      "description": "Storage bucket does not have object versioning enabled.",
+      "risk": "Without versioning, accidental deletion or overwrite of objects is permanent. An attacker with write access could silently replace data.",
+      "remediation": {
+        "description": "Enable object versioning on the bucket.",
+        "cli_commands": ["gsutil versioning set on gs://prod-data-lake"],
+        "terraform": "resource \"google_storage_bucket\" \"prod_data_lake\" {\n  versioning {\n    enabled = true\n  }\n}"
+      },
+      "related_resources": [
+        {"id": "projects/prod-123", "name": "prod-123", "resource_type": "cloudresourcemanager.googleapis.com/Project", "provider": "gcp"}
+      ]
+    },
+    {
+      "id": "f6e5d4c3b2a1",
+      "policy_id": "gcp/iam/no-user-managed-keys",
+      "title": "User-managed service account key",
+      "severity": "high",
+      "resource": {
+        "id": "projects/prod-123/serviceAccounts/deploy@prod-123.iam.gserviceaccount.com",
+        "name": "deploy@prod-123.iam.gserviceaccount.com",
+        "resource_type": "iam.googleapis.com/ServiceAccountKey",
+        "provider": "gcp"
+      },
+      "description": "Service account has a user-managed key older than 90 days.",
+      "risk": "User-managed keys are long-lived credentials that can be exfiltrated. Workload Identity Federation eliminates this risk.",
+      "remediation": {
+        "description": "Delete the user-managed key and use Workload Identity Federation.",
+        "cli_commands": ["gcloud iam service-accounts keys delete KEY_ID --iam-account=deploy@prod-123.iam.gserviceaccount.com"]
+      },
+      "related_resources": []
+    },
+    {
+      "id": "1a2b3c4d5e6f",
+      "policy_id": "gcp/storage/no-public-access",
+      "title": "Bucket allows public access",
+      "severity": "critical",
+      "resource": {
+        "id": "gs://prod-data-lake",
+        "name": "prod-data-lake",
+        "resource_type": "storage.googleapis.com/Bucket",
+        "provider": "gcp"
+      },
+      "description": "Storage bucket has allUsers or allAuthenticatedUsers in its IAM policy.",
+      "risk": "Any internet user can read the bucket contents, which may contain sensitive data.",
+      "remediation": {
+        "description": "Remove allUsers and allAuthenticatedUsers from the bucket IAM policy.",
+        "cli_commands": ["gsutil iam ch -d allUsers gs://prod-data-lake"]
+      },
+      "related_resources": []
+    },
+    {
+      "id": "gh-branch-001",
+      "policy_id": "github/branch-protection/require-review",
+      "title": "No required reviews on default branch",
+      "severity": "medium",
+      "resource": {
+        "id": "github.com/lexicone42/infrastructure",
+        "name": "lexicone42/infrastructure",
+        "resource_type": "github.com/Repository",
+        "provider": "github"
+      },
+      "description": "Default branch does not require pull request reviews before merging.",
+      "risk": "A compromised account could push malicious code directly to production without peer review.",
+      "remediation": {
+        "description": "Enable required reviews on the default branch protection rule.",
+        "cli_commands": ["gh api repos/lexicone42/infrastructure/branches/main/protection -X PUT -f required_pull_request_reviews[required_approving_review_count]=1"]
+      },
+      "related_resources": []
+    },
+    {
+      "id": "gh-actions-001",
+      "policy_id": "github/actions/pin-actions",
+      "title": "Unpinned GitHub Actions",
+      "severity": "medium",
+      "resource": {
+        "id": "github.com/lexicone42/infrastructure",
+        "name": "lexicone42/infrastructure",
+        "resource_type": "github.com/Repository",
+        "provider": "github"
+      },
+      "description": "Workflow uses actions referenced by mutable tag instead of SHA pin.",
+      "risk": "A supply chain attack on the action repository could inject malicious code into CI/CD pipelines.",
+      "remediation": {
+        "description": "Pin all GitHub Actions to full commit SHAs.",
+        "cli_commands": []
+      },
+      "related_resources": []
+    }
+  ],
+  "attack_paths": [
+    {
+      "title": "Supply chain: unpinned action -> infrastructure repo -> production GCP",
+      "finding_ids": ["gh-actions-001", "gh-branch-001"],
+      "severity": "high"
+    }
+  ],
+  "chokepoints": [
+    {
+      "resource_id": "gs://prod-data-lake",
+      "finding_ids": ["a1b2c3d4e5f6", "1a2b3c4d5e6f"],
+      "severity": "critical"
+    }
+  ],
+  "remediation_plan": {
+    "ordered_items": ["1a2b3c4d5e6f", "a1b2c3d4e5f6", "f6e5d4c3b2a1"]
+  },
+  "threat_scenarios": [],
+  "trust_cycles": [],
+  "summary": {
+    "total_findings": 5,
+    "by_severity": {"critical": 1, "high": 2, "medium": 2},
+    "by_provider": {"gcp": 3, "github": 2}
+  }
+}

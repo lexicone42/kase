@@ -739,6 +739,109 @@ async fn triage_excludes_closed_cases() {
     assert_eq!(items[0].case.severity, Severity::High);
 }
 
+// === Karkinos compatibility ===
+
+#[tokio::test]
+async fn ingest_karkinos_native_format() {
+    let (app, store) = test_app();
+
+    // Karkinos uses nested resource: { id, name, resource_type, provider }
+    // instead of flat resource_id, resource_type, provider
+    let karkinos_scan: serde_json::Value = serde_json::json!({
+        "scan_id": "karkinos-test",
+        "timestamp": "2026-03-20T00:00:00Z",
+        "duration_secs": 10.5,
+        "total_resources": 50,
+        "findings": [
+            {
+                "id": "f1",
+                "policy_id": "gcp/storage/versioning",
+                "title": "Bucket versioning disabled",
+                "severity": "high",
+                "resource": {
+                    "id": "gs://my-bucket",
+                    "name": "my-bucket",
+                    "resource_type": "storage.googleapis.com/Bucket",
+                    "provider": "gcp"
+                },
+                "description": "Versioning not enabled",
+                "risk": "Data loss risk",
+                "remediation": {"description": "Enable versioning", "cli_commands": []},
+                "related_resources": []
+            },
+            {
+                "id": "f2",
+                "policy_id": "github/branch-protection",
+                "title": "No branch protection",
+                "severity": "medium",
+                "resource": {
+                    "id": "github.com/org/repo",
+                    "name": "org/repo",
+                    "resource_type": "github.com/Repository",
+                    "provider": "github"
+                },
+                "description": "Default branch unprotected",
+                "risk": "Code injection risk",
+                "remediation": {"description": "Add protection", "cli_commands": []},
+                "related_resources": []
+            }
+        ],
+        "attack_paths": [],
+        "chokepoints": [],
+        "summary": {"total_findings": 2}
+    });
+
+    let resp = app
+        .oneshot(json_post("/api/v1/ingest", &karkinos_scan))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let result: IngestResponse = body_json(resp).await;
+    assert_eq!(result.created.len(), 2);
+
+    // Verify the nested resource fields were correctly extracted
+    let cases = store.list(&ListParams::default()).await.unwrap();
+    assert_eq!(cases.len(), 2);
+
+    let gcp_case = cases.iter().find(|c| c.provider == Provider::Gcp).unwrap();
+    assert_eq!(gcp_case.findings[0].resource_id, "gs://my-bucket");
+    assert_eq!(gcp_case.severity, Severity::High);
+
+    let gh_case = cases.iter().find(|c| c.provider == Provider::Github).unwrap();
+    assert_eq!(gh_case.findings[0].resource_id, "github.com/org/repo");
+}
+
+#[tokio::test]
+async fn ingest_google_workspace_provider_alias() {
+    let (app, store) = test_app();
+
+    let scan: serde_json::Value = serde_json::json!({
+        "scan_id": "test",
+        "timestamp": "2026-03-20T00:00:00Z",
+        "findings": [{
+            "id": "f1",
+            "policy_id": "workspace/mfa",
+            "title": "MFA not enforced",
+            "severity": "critical",
+            "resource": {
+                "id": "workspace/org",
+                "name": "org",
+                "resource_type": "workspace/Organization",
+                "provider": "google_workspace"
+            },
+            "description": "MFA not required"
+        }]
+    });
+
+    let resp = app.oneshot(json_post("/api/v1/ingest", &scan)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let cases = store.list(&ListParams::default()).await.unwrap();
+    assert_eq!(cases.len(), 1);
+    assert_eq!(cases[0].provider, Provider::Workspace);
+}
+
 // === Full lifecycle ===
 
 #[tokio::test]
